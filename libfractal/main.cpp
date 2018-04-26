@@ -14,6 +14,8 @@
 #include <pthread.h>
 #define NTHREAD 3// a changer avec le nombre max de thread qu'on peut avoir!!!!!
 
+TEST;
+
 pthread_mutex_t mutex1;
 pthread_mutex_t mutex2;
 sem_t empty1;
