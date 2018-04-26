@@ -7,7 +7,7 @@ struct fractal {
   int height;
   double a;
   double b;
-  double *value;// a voir si c'est pas plutot des int.
+  int *value;// a voir si c'est pas plutot des int.
 };
 
 /*

@@ -28,19 +28,16 @@ sem_init (&empty2,0,N);//N a discuter
 sem_init (&full2,0,0);
 int le_plus_grand=INT_MIN;
 
-typedef struct tab{
-  int value;
-  struct fractal *tableau_fract;
-} tab_t;
+//typedef struct tab{
+////  struct fractal *tableau_fract;
+//} tab_t;
 
-struct fractal test[6];//a initialise au meme nbre que &
-struct fractal test2[6];
-tab_t *tab1;//au départ, je les avais initialisé ds la main (probleme car ils étaient dans le stack->zone non accessible par les threads)
-tab1->value=0;//place dans le tableau a laquelle il faut placer la prochaine fractal dont il faut calculer la valeur des pixels.
-tab1->tableau_fract =(struct fractal *)test;
-tab_t *tab2;
-tab2->value=0;//place dans le tableau a laquelle il faut placer la prochaine fractal dont la valeur des pixels est deja calculee.
-tab2->tableau_fract=(struct fractal *)test2;
+
+struct fractal *tab1[20];//20? peut etre a changer!!!
+//tab1->value=0;//place dans le tableau a laquelle il faut placer la prochaine fractal dont il faut calculer la valeur des pixels.
+struct fractal *tab2[20];
+//tab2->value=0;//place dans le tableau a laquelle il faut placer la prochaine fractal dont la valeur des pixels est deja calculee.
+
 
 
 
@@ -85,7 +82,7 @@ void producer (void){
     }
     char nom[65];
     while(caracter!=' '){
-      strcpy(nom, caracter);
+      strcpy(nom, &caracter);//A TESTER!!!!
       ret=read(r,&caracter,sizeof(char));
       if(ret<0){
         return (EXIT_FAILURE);
@@ -97,7 +94,7 @@ void producer (void){
     }
     char la_largeur[200];//a discuter j'ai mis 200 en ne sachant pas la longeure que pouvait avoir la longeur et la la_largeur mais on parle de 32 bits
     while(caracter!=' '){
-      strcpy(la_largeur, caracter);
+      strcpy(la_largeur, &caracter);
       ret=read(r,&caracter,sizeof(char));
       if(ret<0){
         return (EXIT_FAILURE);
@@ -110,7 +107,7 @@ void producer (void){
     }
     char la_longeur[200];
     while(caracter!=' '){
-      strcpy(la_longeur, caracter);
+      strcpy(la_longeur, &caracter);
       ret=read(r,&caracter,sizeof(char));
       if(ret<0){
         return (EXIT_FAILURE);
@@ -123,7 +120,7 @@ void producer (void){
     }
     char reel[200];
     while(caracter!=' '){
-      strcpy(reel,caracter);
+      strcpy(reel,&caracter);
       ret=read(r,&caracter,sizeof(char));
       if(ret<0){
         return (EXIT_FAILURE);
@@ -136,7 +133,7 @@ void producer (void){
     }
     char imaginaire[200];
     while(caracter!=' '){
-      strcpy(imaginaire,caracter);
+      strcpy(imaginaire,&caracter);
       ret=read(r,&caracter,sizeof(char));
       if(ret<0){
         return (EXIT_FAILURE);
@@ -157,11 +154,17 @@ void producer (void){
 
 
     struct fractal *fractal_a_creer;
-    fractal_a_creer=fractal_new(&nom,la_largeur2,la_longeur2,reel2,imaginaire2);
+    int place;
+    fractal_a_creer=fractal_new(nom,la_largeur2,la_longeur2,(double)reel2,(double)imaginaire2);
     sem_wait(&empty1);
     pthread_mutex_lock (&mutex1);
-    tab1->tableau_fract+tab1->value=fractal_a_creer;
-    tab1->value=tab1->value+1;
+    if(sem_getvalue(&full1,&place)!=0){
+      return (EXIT_FAILURE);
+    }
+
+
+    tab1[place]=fractal_a_creer;
+    //tab1->value=tab1->value+1;
     pthread_mutex_unlock(&mutex1);
     sem_post(&full1);
   }
@@ -171,13 +174,17 @@ void producer (void){
 void proconsumer(void){
   struct fractal *fractal_a_calculer;
   struct fractal *fractal_a_free;
+  int place;
   while(true){//a changer en while(le producer a fini && le tableau est vide)
     sem_wait(&full1);
     pthread_mutex_lock(&mutex1);
-    fractal_a_free=tab1->tableau_fract+tab1->value-1;
+    if(sem_getvalue(&full1,&place)!=0){
+      return (EXIT_FAILURE);
+    }
+    fractal_a_free=tab1[place];
     fractal_a_calculer=fractal_new(fractal_a_free->name,fractal_a_free->width,fractal_a_free->height,fractal_a_free->a,fractal_a_free->b);
     free(fractal_a_free);
-    tab1->value=tab1->value-1;  //prend une fractal + decremente la valeur du tableau et remplace l'endoit du tableau dont on a pri la fract par NULL
+    //tab1->value=tab1->value-1;  //prend une fractal + decremente la valeur du tableau et remplace l'endoit du tableau dont on a pri la fract par NULL
     pthread_mutex_unlock(&mutex1);
     sem_post (&empty1);
     for(int largeur=0;largeur<*(fractal_a_calculer->height);largeur++){
@@ -187,8 +194,11 @@ void proconsumer(void){
     }//fin du calcul des fractal.
     sem_wait(&empty2);
     pthread_mutex_lock(&mutex2);
-    (tab2->tableau_fract+tab2->value)=fractal_a_calculer;
-    tab2->value=tab2->value+1;
+    if(sem_getvalue(&full2,&place)!=0){
+      return (EXIT_FAILURE);
+    }
+    tab2[place]=fractal_a_calculer;
+    //tab2->value=tab2->value+1;
     pthread_mutex_unlock(&mutex2);
     sem_post(&full2);
 
@@ -197,27 +207,38 @@ void proconsumer(void){
 void consumer (void){
   struct fractal *fractal_moyenne;
   struct fractal *fractal_a_free;
-  double *b;
+  struct fractal *fractal_a_conserver;
+  int *b;
+  int place;
   while(true){//a changer en while(le proconsummer a fini && le tableau est vide)
     sem_wait(&full2);
     pthread_mutex_lock(&mutex2);
-    fractal_a_free=tab2->tableau_fract+tab2->value-1;
+    if(sem_getvalue(&full2,&place)!=0){
+      return (EXIT_FAILURE);
+    }
+    fractal_a_free=tab2[place];
     fractal_moyenne=fractal_new(fractal_a_free->name,fractal_a_free->width,fractal_a_free->height,fractal_a_free->a,fractal_a_free->b);
     b=fractal_a_free->value;//obligé de faire ca car fractal_new ne prend pas en compte le tableau value (ici, hyper important)
     fractal_moyenne->value=b;
     free(fractal_a_free);
-    tab2->value=tab2->value-1;//prend une fractal dont il faut calculer la moyenne +decremente et remplace l'endroit du tableau dont on a pris la fract par NULL
+    //tab2->value=tab2->value-1;//prend une fractal dont il faut calculer la moyenne +decremente et remplace l'endroit du tableau dont on a pris la fract par NULL
     pthread_mutex_unlock(&mutex2);
     sem_post(&empty2);
     b=fractal_moyenne->value;
     int max_tableau=fractal_moyenne->width * fractal_moyenne->height;
     int a_comparer;
+
     for(int i=0;i<max_tableau;i++){
       a_comparer=a_comparer+*(b+i);
     }
     a_comparer=a_comparer/(max_tableau);//a cheker si on mettrait pas plutot un double et une division plus précise.
     if(a_comparer>le_plus_grand){
       le_plus_grand=a_comparer;
+      free(fractal_a_conserver);
+      fractal_a_conserver=fractal_moyenne;
+    }
+    else{
+      free(fractal_moyenne);
     }
 
   }
